@@ -1,0 +1,98 @@
+
+////////////////////////////////////////
+// Génération des comptes auxiliaires //
+////////////////////////////////////////
+List<sofactoapp__Compte_auxiliaire__c> lst_newRecords = new List<sofactoapp__Compte_auxiliaire__c>();
+String lv_411 = '<SALESFORCE ID DU COMPTE COMPTABLE CLIENT 411>';
+for (Account lv_account : 
+		[SELECT Id, Name 
+		FROM Account]) 
+{
+	lst_newRecords.add(
+		new sofactoapp__Compte_auxiliaire__c (
+			sofactoapp__Compte__c = lv_account.Id,
+			sofactoapp__Compte_comptable__c = lv_411,
+			Name = '411' + lv_account.Name.left(4).toUppercase(),
+			sofactoapp__Libelle__c = '411' + lv_account.Name.toUppercase(),
+			sofactoapp__External_ID__c = '411' + lv_account.Name.toUppercase()
+		)
+	);
+}
+
+insert lst_newRecords;
+
+///////////////////////////////////////////////////////////////
+// Génération des données comptables pour une raison sociale //
+///////////////////////////////////////////////////////////////
+List<sofactoapp__Donnee_Comptable__c> lst_accountingData = new List<sofactoapp__Donnee_Comptable__c>();
+String lv_issuerId = '<SALESFORCE ID DE LA RAISON SOCIALE>';
+String lv_issuerName = '<NOM DE LA RAISON SOCIALE>';
+for (sofactoapp__Compte_auxiliaire__c lv_account : 
+		[SELECT Id, sofactoapp__Compte__c, sofactoapp__Compte__r.BillingStreet, sofactoapp__Compte__r.BillingPostalCode, 
+		sofactoapp__Compte__r.BillingCity, sofactoapp__Compte__r.BillingCountry, 
+		sofactoapp__Compte__r.sofactoapp__TVA_intra__c, sofactoapp__Compte__r.Name
+		FROM sofactoapp__Compte_auxiliaire__c])
+{
+	lst_accountingData.add(
+		new sofactoapp__Donnee_Comptable__c (
+			Name = lv_account.sofactoapp__Compte__r.Name + ' - ' + lv_issuerName,
+			sofactoapp__Compte__c = lv_account.sofactoapp__Compte__c, 
+			sofactoapp__Compte_auxiliaire__c = lv_account.Id,
+			sofactoapp__Raison_sociale__c = lv_issuerId,
+			sofactoapp__Raison_sociale_facturation__c = lv_account.sofactoapp__Compte__r.Name,			
+			sofactoapp__TVA_intracommunautaire__c = lv_account.sofactoapp__Compte__r.sofactoapp__TVA_intra__c,
+			sofactoapp__Rue_facturation_ligne_1__c = lv_account.sofactoapp__Compte__r.BillingStreet,
+			sofactoapp__Code_postal_facturation__c = lv_account.sofactoapp__Compte__r.BillingPostalCode,
+			sofactoapp__Ville_facturation__c = lv_account.sofactoapp__Compte__r.BillingCity,
+			sofactoapp__Pays_facturation__c = lv_account.sofactoapp__Compte__r.BillingCountry
+		)
+	);
+}
+
+insert lst_accountingData;
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////
+// Mise à jour des factures émise verrouillées existantes avec la donnée comptable récemment créée //
+/////////////////////////////////////////////////////////////////////////////////////////////////////
+List<sofactoapp__Donnee_Comptable__c> lst_accountingRecords = 
+    [SELECT Name , sofactoapp__Compte__c
+     FROM sofactoapp__Donnee_Comptable__c];
+Map<Id,Id> map_records = new Map<Id,Id>();
+for (sofactoapp__Donnee_Comptable__c record : records) {
+	map_records.put(record.sofactoapp__Compte__c, record.Id);
+}
+List<sofactoapp__Factures_client__c> lst_lockedInvoices = 
+    [SELECT Id, sofactoapp__Donnee_comptable__c, sofactoapp__Compte__c 
+      FROM sofactoapp__Factures_client__c
+     WHERE sofactoapp__Compte__c IN :map_records.keySet()
+     AND sofactoapp__IsLocked__c = true];
+for (sofactoapp__Factures_client__c lv_invoice : lst_lockedInvoices){
+    lv_invoice.sofactoapp__Donnee_comptable__c = map_records.get(invoice.sofactoapp__Compte__c);
+    lv_invoice.sofactoapp__IsLocked__c = false;
+}
+update lst_lockedInvoices;
+// Re-verouillage des factures
+for (sofactoapp__Factures_client__c lv_invoice : lst_lockedInvoices){
+    lv_invoice.sofactoapp__IsLocked__c = true;
+}
+update lst_lockedInvoices;
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////
+// Mise à jour des factures non-verrouillées existantes avec la donnée comptable récemment créée //
+/////////////////////////////////////////////////////////////////////////////////////////////////////
+List<sofactoapp__Donnee_Comptable__c> lst_accountingRecords = 
+    [SELECT Name , sofactoapp__Compte__c
+     FROM sofactoapp__Donnee_Comptable__c];
+Map<Id,Id> map_records = new Map<Id,Id>();
+for (sofactoapp__Donnee_Comptable__c record : records) {
+	map_records.put(record.sofactoapp__Compte__c, record.Id);
+}
+List<sofactoapp__Factures_client__c> lst_unlockedInvoices = 
+    [SELECT Id, sofactoapp__Donnee_comptable__c, sofactoapp__Compte__c 
+      FROM sofactoapp__Factures_client__c
+     WHERE sofactoapp__Compte__c IN :map_records.keySet()
+     AND sofactoapp__IsLocked__c = false];
+for (sofactoapp__Factures_client__c lv_invoice : lst_unlockedInvoices){
+    lv_invoice.sofactoapp__Donnee_comptable__c = map_records.get(invoice.sofactoapp__Compte__c);
+}
+update lst_unlockedInvoices;
