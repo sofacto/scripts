@@ -1,0 +1,18 @@
+// For the Execute Anonymous Apex tool in the Developer Console
+// Generate Products rules
+List<sofactoapp__Product_rule__c> records = new List<sofactoapp__Product_rule__c>();
+List<Product2> products = [SELECT Id FROM Product2 WHERE IsActive = true];
+System.debug('products > ' + products.size());
+for (sofactoapp__Product_configuration__c config : [SELECT Id FROM sofactoapp__Product_configuration__c]) {
+    for (Product2 product : products) {
+        records.add(
+            new sofactoapp__Product_rule__c (
+                sofactoapp__Product_configuration__c = config.Id, 
+                sofactoapp__Produit__c = product.Id
+            )
+        );
+    }
+}
+
+System.debug('records > ' + records.size());
+insert records;
