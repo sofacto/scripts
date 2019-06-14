@@ -1,0 +1,70 @@
+List<Id> lst_oppIds = new List<Id>();
+// IMPORTANT : ne fonctionne que s'il y a moins de 10,000 factures dans le system.
+for (sofactoapp__Factures_client__c lv_invoice : [SELECT sofactoapp__Opportunit__c FROM sofactoapp__Factures_client__c]) {
+    lst_oppIds.add(lv_invoice.sofactoapp__Opportunit__c);
+}
+Map<Id, Opportunity> map_opps = new Map<Id, Opportunity> (
+    [SELECT Id, sofactoapp__Facturation_previsionnelle__c, sofactoapp__Facturation_emise__c
+    FROM Opportunity
+    WHERE Id IN :lst_oppIds]
+);
+Map<Id, Decimal> map_previ = new Map<Id, Decimal>();
+Map<Id, Decimal> map_emis = new Map<Id, Decimal>();
+
+for (Opportunity lv_opp : map_opps.values()) {
+    lv_opp.sofactoapp__Facturation_previsionnelle__c = 0;
+    lv_opp.sofactoapp__Facturation_emise__c = 0;
+}
+
+List<sofactoapp__Factures_client__c> lst_invoices = 
+    [SELECT sofactoapp__Montant_facture_previsionnelle__c, sofactoapp__Montant_facture_emise__c, sofactoapp__Opportunit__c
+    FROM sofactoapp__Factures_client__c
+    WHERE sofactoapp__Opportunit__c IN :map_opps.keySet()
+    AND IsDeleted = false];
+
+for (sofactoapp__Factures_client__c lv_invoice : lst_invoices) {
+    
+    Id lv_oppId = lv_invoice.sofactoapp__Opportunit__c;
+
+    if (map_opps.get(lv_oppId) != null) {
+        
+        Decimal lv_previ = lv_invoice.sofactoapp__Montant_facture_previsionnelle__c;
+        if (map_previ.get(lv_oppId) == null) {
+            map_previ.put(lv_oppId, lv_previ);
+        } else {
+            map_previ.put(lv_oppId, map_previ.get(lv_oppId) + lv_previ);
+        }
+
+        Decimal lv_emis = lv_invoice.sofactoapp__Montant_facture_emise__c;
+        if (map_emis.get(lv_oppId) == null) {
+            map_emis.put(lv_oppId, lv_emis);
+        } else {
+            map_emis.put(lv_oppId, map_emis.get(lv_oppId) + lv_emis);
+        }                
+        
+    }
+}
+
+if (map_previ.isEmpty() == false) {
+    for (Id lv_oppId : map_previ.keySet()) {
+        Decimal lv_previ = map_previ.get(lv_oppId);
+        map_opps.get(lv_oppId).sofactoapp__Facturation_previsionnelle__c = lv_previ;
+    }
+}
+
+if (map_emis.isEmpty() == false) {
+    for (Id lv_oppId : map_emis.keySet()) {
+        Decimal lv_emis = map_emis.get(lv_oppId);
+        map_opps.get(lv_oppId).sofactoapp__Facturation_emise__c = lv_emis;
+    }
+}
+
+// Database transaction
+if (map_opps.isEmpty() == false) {
+    List<Database.SaveResult> lst_results = Database.update(map_opps.values(), false);
+    for (Database.SaveResult lv_result : lst_results) {
+        if (lv_result.isSuccess() == false) {
+            System.debug('[ERROR] OpportunityUtils.rollupInvoiceDetails : ' + lv_result.getErrors().get(0));
+        }
+    }
+}

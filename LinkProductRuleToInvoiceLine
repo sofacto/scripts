@@ -1,0 +1,90 @@
+//
+// Récupération des lignes de facture sans règles produit, mais dont la facture à une configuration produit
+// ATTENTION : la requête ci-dessous filtre les lignes du mois, par lot de 50
+// Pour filtrer sur les lignes de l'année : WHERE sofactoapp__Facture__r.sofactoapp__Date_de_facture__c = THIS_YEAR
+// Pour filtrer sur les lignes de janvier 2017 : WHERE CALENDAR_MONTH(sofactoapp__Facture__r.sofactoapp__Date_de_facture__c) = 1 AND CALENDAR_YEAR(sofactoapp__Facture__r.sofactoapp__Date_de_facture__c) = 2017
+// Plus d'info sur les fonctions SOQL sur dates : https://developer.salesforce.com/docs/atlas.en-us.soql_sosl.meta/soql_sosl/sforce_api_calls_soql_select_date_functions.htm
+//
+List<sofactoapp__Ligne_de_Facture__c> records = 
+    [SELECT Id, sofactoapp__Facture__c,  
+     sofactoapp__Produit__c, sofactoapp__Product_rule__c
+     FROM sofactoapp__Ligne_de_Facture__c
+     WHERE sofactoapp__Facture__r.sofactoapp__Date_de_facture__c = THIS_MONTH
+     AND sofactoapp__Facture__r.sofactoapp__Product_configuration__c != NULL
+     AND sofactoapp__Produit__c != NULL
+     AND sofactoapp__Product_rule__c = NULL
+     LIMIT 50];
+
+List<Id> lst_invoiceIds = new List<Id>();
+List<Id> lst_productIds = new List<Id>();
+List<Id> lst_productConfigurationIds = new List<Id>();
+List<Id> lst_productRuleIds = new List<Id>();
+
+// Récupération des ids de facture et produits
+for (sofactoapp__Ligne_de_Facture__c lv_invoiceItem : records) {
+    lst_invoiceIds.add(lv_invoiceItem.sofactoapp__Facture__c);
+    if (lv_invoiceItem.sofactoapp__Produit__c != null) {
+        lst_productIds.add(lv_invoiceItem.sofactoapp__Produit__c);
+    }
+}
+
+// Map des factures pour récupération des configurations produit
+Map<Id, sofactoapp__Factures_client__c> map_invoices = new Map<Id, sofactoapp__Factures_client__c> (
+    [SELECT Id, sofactoapp__Product_configuration__c, sofactoapp__Emetteur_facture__r.sofactoapp__Detecter_regles_produit__c
+     FROM sofactoapp__Factures_client__c
+     WHERE Id IN :lst_invoiceIds]
+);
+for (sofactoapp__Factures_client__c lv_invoice : map_invoices.values()) {
+    if (lv_invoice.sofactoapp__Product_configuration__c != null) {
+        lst_productConfigurationIds.add(lv_invoice.sofactoapp__Product_configuration__c);
+    }
+}
+
+// Mapping entre Product Configuration -> Product2Id -> ProductRule (Product_rule__c)
+Map<Id, Map<Id, Id>> map_productRules = new Map<Id, Map<Id, Id>>();
+for (sofactoapp__Product_rule__c lv_rule : 
+     [SELECT Id, sofactoapp__Produit__c, sofactoapp__Product_configuration__c
+      FROM sofactoapp__Product_rule__c
+      WHERE sofactoapp__Produit__c IN :lst_productIds
+      AND sofactoapp__Product_configuration__c IN :lst_productConfigurationIds])
+{
+    if (map_productRules.get(lv_rule.sofactoapp__Product_configuration__c) == null) {
+        map_productRules.put(lv_rule.sofactoapp__Product_configuration__c, new Map<Id, Id>());
+    }
+    map_productRules.get(lv_rule.sofactoapp__Product_configuration__c).put(lv_rule.sofactoapp__Produit__c, lv_rule.Id);
+}
+
+System.debug('map_productRules > ' + map_productRules);
+
+//
+// Traitement des lignes de facture
+// Si on trouve une règle produit correspondant à la configuration produit de la facture + le produit de la ligne, 
+// alors on la pousse sur la ligne de facture
+//
+Integer ok=0;
+Integer ko=0;
+for (sofactoapp__Ligne_de_Facture__c lv_invoiceItem : records) {
+    System.debug('lv_invoiceItem.sofactoapp__Product_rule__c > ' + lv_invoiceItem.sofactoapp__Product_rule__c);
+    System.debug('lv_invoiceItem.sofactoapp__Produit__c > ' + lv_invoiceItem.sofactoapp__Produit__c);
+    if (lv_invoiceItem.sofactoapp__Produit__c != null && 
+        map_invoices.get(lv_invoiceItem.sofactoapp__Facture__c) != null && 
+        map_invoices.get(lv_invoiceItem.sofactoapp__Facture__c).sofactoapp__Emetteur_facture__r.sofactoapp__Detecter_regles_produit__c) 
+    {
+        Id lv_prodConfigId = map_invoices.get(lv_invoiceItem.sofactoapp__Facture__c).sofactoapp__Product_configuration__c;
+        if (map_productRules.get(lv_prodConfigId) != null) 
+        {
+            lv_invoiceItem.sofactoapp__Product_rule__c =  map_productRules.get(lv_prodConfigId).get(lv_invoiceItem.sofactoapp__Produit__c);
+            System.debug('Applying ' + map_productRules.get(lv_prodConfigId).get(lv_invoiceItem.sofactoapp__Produit__c));
+            ok++;
+        }
+    } else {
+        System.debug('HODOR > pas de règle produit trouvée pour ' + lv_invoiceItem);
+        ko++;
+    }
+    System.debug('-----------------');
+}
+
+System.debug('HODOR? ' + records.size());
+System.debug('ok > ' + ok);
+System.debug('ko > ' + ko);
+update records;

@@ -1,0 +1,16 @@
+List<sofactoapp.SendInvoicesAction.SendInvoiceActionRequest> params = new List<sofactoapp.SendInvoicesAction.SendInvoiceActionRequest>();
+sofactoapp.SendInvoicesAction.SendInvoiceActionRequest param = new sofactoapp.SendInvoicesAction.SendInvoiceActionRequest();
+param.invoiceId = 'XXXXXX';
+param.emailTemplateDeveloperName = 'YYYYYY';
+params.add(param);
+sofactoapp.SendInvoicesAction.sendInvoices (params);
+
+
+
+// String CRON_EXP = 'ss mm hh dd MM ? AAAA';
+String CRON_EXP = '00 36 18 29 08 ? 2018';
+String lv_jobId = System.schedule(
+    'markInvoiceForAutoReminder_Test_'+Datetime.now(),
+    CRON_EXP, 
+    new sofactoapp.MarkInvoiceForAutoIssue()
+);
