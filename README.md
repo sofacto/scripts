@@ -18,5 +18,4 @@ The Script provided are for SANDBOX USE ONLY.
 ### Product Rules
 ### Test MarkInvoiceForAutoIssue and Start
 ### Rollup to Opportunity
-### Delete TestInvoice
 ### Link ProductRules -> InvoiceLine
