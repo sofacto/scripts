@@ -1,0 +1,21 @@
+// ATTENTION : PERF
+// Pour filtrer sur les lignes de l'année : WHERE sofactoapp__Facture__r.sofactoapp__Date_de_facture__c = THIS_YEAR
+// Pour filtrer sur les lignes de janvier 2017 : WHERE CALENDAR_MONTH(sofactoapp__Facture__r.sofactoapp__Date_de_facture__c) = 1 AND CALENDAR_YEAR(sofactoapp__Facture__r.sofactoapp__Date_de_facture__c) = 2017
+// Penser à ajouter une limite si besoin (LIMIT 500) en ne requêtant que les factures sans écriture comptable (ce qui implique de supprimer les écritures en amont, avec le même critère de filtre (pour la date) que celui utilisé pour les factures
+// Plus d'info sur les fonctions SOQL sur dates : https://developer.salesforce.com/docs/atlas.en-us.soql_sosl.meta/soql_sosl/sforce_api_calls_soql_select_date_functions.htm
+//
+List<sofactoapp__Ecriture_comptable__c> ecritures = 
+    [SELECT Id 
+    FROM sofactoapp__Ecriture_comptable__c 
+    WHERE sofactoapp__Date_de_piece__c = THIS_YEAR];
+delete ecritures;
+
+Map<Id, sofactoapp__Factures_client__c> records = new Map<Id, sofactoapp__Factures_client__c>(
+    [SELECT Id
+    FROM sofactoapp__Factures_client__c
+    WHERE sofactoapp__IsSent__c = true
+    AND sofactoapp__Date_de_facture__c = THIS_YEAR
+    AND sofactoapp__Ecriture_comptable__c = NULL]);
+List<Id> recordIds = new List<Id>();
+recordIds.addAll(records.keySet());
+sofactoapp.FacturesClientService.generateAccountingData(recordIds);
